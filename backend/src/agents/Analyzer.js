@@ -12,7 +12,7 @@ const CONFIG = {
 }
 
 // ---------- Helper: issue object ----------
-function issue(scope, column, rows, issue_type, severity, score, evidence, suggenstedFix = null) {
+function issue(scope, column, rows, issue_type, severity, score, evidence, suggestedFix = null) {
     return {
         id: uuidv4(),
         scope,
@@ -53,7 +53,7 @@ class Analyzer {
         const isValidDate = (v) => {
             if (/^\d{4,}$/.test(v)) return false;
 
-            const timestamp = Date.parse()
+            const timestamp = Date.parse(v)
             return !NaN(timestamp)
         }
 
@@ -82,7 +82,7 @@ class Analyzer {
     }
 
     inferSchema() {
-        schema = {}
+        const schema = {}
 
         this.df.columns.forEach((col) => {
             const s = this.df[col]
@@ -121,15 +121,15 @@ class Analyzer {
         this.df.columns.forEach((col) => {
             s = this.df[col]
 
-            missingCount = 0
-            missingRowIdx = []
+            let missingCount = 0
+            let missingRowIdx = []
 
             for (i = 0; i < s.length; i++) {
                 const val = s.iloc(i)
                 if (isMissing(val)) {
                     missingCount++;
                     if (missingRowIdx.length < 5) {
-                        missingRowIdx.push(val)
+                        missingRowIdx.push(i)
                     }
                 }
             }
@@ -183,6 +183,8 @@ class Analyzer {
     // ----------------------------------
     detectDuplicatesAndPK() {
         const jsonRows = this.df.values.map((v) => JSON.stringify(v));
+        // crypto.createHash("md5").update(JSON.stringify(row)).digest("hex");
+
         const seen = new Set();
         let duplicates = [];
 
