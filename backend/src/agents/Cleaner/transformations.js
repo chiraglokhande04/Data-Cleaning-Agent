@@ -186,9 +186,9 @@ class ClipOutliersIQR extends Transformation {
                 }
                 return copy
             })
-            const evidence = {method, lower, upper, changed_count: changed}
-            return {records: newRecords, evidence}
-        }else if (method == "flag"){
+            const evidence = { method, lower, upper, changed_count: changed }
+            return { records: newRecords, evidence }
+        } else if (method == "flag") {
             const newRecords = records.map((r) => {
                 const copy = Object.assign({}, r)
                 const v = Number(copy[column])
@@ -197,21 +197,117 @@ class ClipOutliersIQR extends Transformation {
                 if (copy[flag_column_name]) changed++
                 return copy
             })
-            const evidence = {method, lower, upper, flagged_count: changed}
-            return {records: newRecords, evidence}
-        }else if (method == "remove"){
+            const evidence = { method, lower, upper, flagged_count: changed }
+            return { records: newRecords, evidence }
+        } else if (method == "remove") {
             const kept = records.filter((r) => {
                 const v = Number(r[column])
                 return isNaN(v) ? true : (v >= lower && v <= upper)
             })
 
             const removed = records.length - kept.length
-            const evidence = {method, lower, upper, removed_count: removed}
-            return {records: kept, evidence}
+            const evidence = { method, lower, upper, removed_count: removed }
+            return { records: kept, evidence }
         }
 
-        return { records, evidence: {reason: "unknown_method"}}
+        return { records, evidence: { reason: "unknown_method" } }
     }
 }
 
 
+
+/**
+ * MapCategorical: map values by explicit map or fuzzy via Fuse.js
+ * params: { column, mapping: {old: new, ...} } OR { fuzzy: true, threshold: 0.85 }
+ */
+class MapCategorical extends Transformation() {
+    constructor(params = {}) {
+        super("map_categorical", params, false)
+    }
+
+    apply(records) {
+        const { column, mapping = null, fuzzy = false, threshold = 0.85 } = this.params
+        const beforeSample = records.slice(0, 5).map((r) => r[column])
+        const vals = [...new Set(records.map((r) => r[column]).filter((v) => v !== null || v !== undefined))]
+
+        let newRecords = records.map((r) => Object.assign({}, r))
+        let changed = 0
+        if (mapping && mapping === 'object') {
+            newRecords = newRecords.map((v) => {
+                const copy = r
+                if (copy[column] in mapping) {
+                    copy[column] = mapping[copy[column]]
+                    changed++
+                }
+                return copy
+            })
+            return { records: newRecords, evidence: { mapping_sample: Object.entries(mapping).slice(0, 10), changed_count: changed } }
+        } else if (fuzzy) {
+            const Fuse = new fuse(vals, { includedScore: true, threshold: 1 })
+            const clusters = []
+            const used = new Set()
+            for (let v of vals) {
+                if (used.has(v)) continue;
+                const matches = Fuse.search(v).filter((m) => (1 - m.score) >= threshold).map((m) => m.item)
+                matches.forEach((m) => used.add(m))
+                if (matches.length > 1) clusters.push(matches)
+            }
+
+            canonical = {}
+            clusters.forEach((grp) => {
+                const canon = grp[0]
+                grp.forEach((v) => { canonical[v] = canon })
+            })
+
+            newRecords = newRecords.map((r) => {
+                if (r[column] in canonical) {
+                    r[column] = canonical[r[column]]
+                    changed++
+                }
+                return r
+            })
+            return { records: newRecords, evidence: { cluster: clusters.slice(0, 20), changed_count: changed } }
+        }
+        return { records: newRecords, evidence: { reason: "no_mapping" } };
+    }
+}
+
+/**
+ * DeriveColumn: create a new column derived from existing row using a JS function
+ * params: { new_column, fn } where fn is a stringified function or actual function (row->{...})
+ * Note: executing arbitrary JS from users is a security risk; pass function from server code, not raw user input.
+ */
+class DeriveColumn extends Transformation() {
+    constructor(params = {}) {
+        super("derived_column", params, false)
+    }
+
+    apply(records) {
+        const { new_column, fn } = this.params
+        const beforeSample = records.slice(0, 5).map((r) => r[column])
+        let changed = 0
+        const newRecords = records.map((r) => {
+            const copy = Object.assign({}, r)
+
+            const value = (typeof fn === "function") ? fn(copy) : null
+            if (value !== undefined) {
+                copy[new_column] = value
+                changed++
+            }
+            return copy
+        })
+        return { records: newRecords, evidence: { before_sample: beforeSample, changed_count: changed } };
+    }
+}
+
+
+
+module.exports = {
+    Transformation,
+    CoerceNumeric,
+    CoerceDatetime,
+    FillMissing,
+    ClipOutliersIQR,
+    MapCategorical,
+    DeriveColumn,
+};
