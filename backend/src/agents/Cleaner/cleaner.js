@@ -4,8 +4,37 @@ const { v4: uuidv4 } = require("uuid");
 class Cleaner {
     constructor(df) {
         this.originalDf = df
-        this.originalRecords = df.toJSON()
-        this.currentRecords = JSON.parse(JSON.stringify(this.originalRecords))
+
+        let raw = dfd.toJSON(df, { format: "row" });
+        // console.log("DEBUG DANFO JSON:", raw);
+
+        // Normalize to array-of-objects
+        // Convert column-oriented → row-oriented
+        if (!Array.isArray(raw)) {
+            const columns = Object.keys(raw);
+
+            // Validate column lengths
+            const length = raw[columns[0]].length;
+
+            const normalized = [];
+
+            for (let i = 0; i < length; i++) {
+                const row = {};
+                for (const col of columns) {
+                    row[col] = raw[col][i];
+                }
+                normalized.push(row);
+            }
+
+            raw = normalized;
+        }
+
+        this.originalRecords = raw;
+        this.currentRecords = JSON.parse(JSON.stringify(raw));
+
+
+        this.originalRecords = raw;
+        this.currentRecords = JSON.parse(JSON.stringify(raw));
         this.transformations = []
         this.provenance = []
     }

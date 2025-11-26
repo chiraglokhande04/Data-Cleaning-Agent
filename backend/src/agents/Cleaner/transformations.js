@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require("uuid");
-const Fuse = require("fuse.js")
+const fuse = require("fuse.js")
 
 
 // Base class Transfromation
@@ -220,7 +220,7 @@ class ClipOutliersIQR extends Transformation {
  * MapCategorical: map values by explicit map or fuzzy via Fuse.js
  * params: { column, mapping: {old: new, ...} } OR { fuzzy: true, threshold: 0.85 }
  */
-class MapCategorical extends Transformation() {
+class MapCategorical extends Transformation {
     constructor(params = {}) {
         super("map_categorical", params, false)
     }
@@ -253,7 +253,7 @@ class MapCategorical extends Transformation() {
                 if (matches.length > 1) clusters.push(matches)
             }
 
-            canonical = {}
+            const canonical = {}
             clusters.forEach((grp) => {
                 const canon = grp[0]
                 grp.forEach((v) => { canonical[v] = canon })
@@ -277,14 +277,14 @@ class MapCategorical extends Transformation() {
  * params: { new_column, fn } where fn is a stringified function or actual function (row->{...})
  * Note: executing arbitrary JS from users is a security risk; pass function from server code, not raw user input.
  */
-class DeriveColumn extends Transformation() {
+class DeriveColumn extends Transformation {
     constructor(params = {}) {
         super("derived_column", params, false)
     }
 
     apply(records) {
         const { new_column, fn } = this.params
-        const beforeSample = records.slice(0, 5).map((r) => r[column])
+        const beforeSample = records.slice(0, 5).map((r) => r[new_column])
         let changed = 0
         const newRecords = records.map((r) => {
             const copy = Object.assign({}, r)
