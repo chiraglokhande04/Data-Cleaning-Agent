@@ -1,18 +1,20 @@
-import express from "express";
-import multer from "multer";
-import fs from "fs";
-import cloudinary from "cloudinary";
-import { parse } from "fast-csv";
-import DatasetMetadata from "../src/models/DatasetMetadata.js";
+const express = require("express");
+require('dotenv').config();
+const multer = require("multer");
+const fs = require("fs");
+const cloudinary = require("cloudinary").v2;
+const { parse } = require("fast-csv");
+const DatasetMetadata = require("../models/DatasetMetadata.js");
+
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
 // Cloudinary setup
-cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD,
-  api_key: process.env.CLOUDINARY_KEY,
-  api_secret: process.env.CLOUDINARY_SECRET,
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
 router.post("/upload", upload.single("file"), async (req, res) => {
@@ -81,7 +83,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         }
 
         // ---- Upload raw CSV file to Cloudinary ----
-        const uploadResult = await cloudinary.v2.uploader.upload(filePath, {
+        const uploadResult = await cloudinary.uploader.upload(filePath, {
           resource_type: "raw",
           folder: "data_cleaning_agent",
         });
@@ -119,4 +121,4 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   });
 });
 
-export default router;
+module.exports = router

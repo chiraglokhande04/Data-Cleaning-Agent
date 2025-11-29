@@ -64,7 +64,7 @@
 // });
 
 
-import mongoose from "mongoose";
+const mongoose = require("mongoose")
 
 const ColumnMetaSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -126,5 +126,5 @@ const DatasetMetadata = mongoose.model(
   DatasetMetadataSchema
 );
 
-export default DatasetMetadata;
-
+module.exports = DatasetMetadata
+ 

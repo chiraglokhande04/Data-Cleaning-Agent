@@ -48,7 +48,11 @@ class Cleaner {
     }
 
     applyTransformation(transformation, options = { autoClean: false, userId: null }) {
+
         const { autoClean = false, userId = null } = options;
+
+        
+
 
         if (transformation.destructive && !autoClean) {
 
@@ -86,6 +90,7 @@ class Cleaner {
         this.currentRecords = newRecords
         this.transformations.push(transformation.toJSON());
         this.provenance.push(prov);
+        console.log("NEW RECORDS SAMPLE:", newRecords[0]);
         return { applied: true, suggestion: false, provenance: prov, currentDf: this.getCurrentDf() };
 
     }
@@ -98,6 +103,8 @@ class Cleaner {
         const results = []
         for (const item of seq) {
             const { transformation, options } = item
+            console.log("APPLYING:", transformation.name, transformation.params);
+
             const res = this.applyTransformation(transformation, options)
             results.push(res)
         }

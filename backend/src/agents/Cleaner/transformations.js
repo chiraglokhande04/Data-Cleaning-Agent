@@ -86,7 +86,7 @@ class CoerceDatetime extends Transformation {
             const v = copy[column]
 
             const parsed = v === null || v === undefined || v === "" ? null : Date.parse(String(v))
-            const out = isNaN(parsed) ? null : new Date.parse(parsed).toISOString()
+            const out = isNaN(parsed) ? null : new Date(parsed).toISOString();
             if (String(parsed) !== String(out)) changed++
             copy[column] = out
             return copy
@@ -114,17 +114,17 @@ class FillMissing extends Transformation {
     apply(records) {
         const { column, strategy = "mean", value } = this.params
 
-        const values = records.map((r) => r[column]).filter((v) => v !== null && v !== undefined && v !== "")
+        const values = records.map((r) => r[column]).filter(v => v !== null && v !== undefined && v !== "")
         let fillValue = value
 
         if (strategy == "mean") {
-            const nums = values.map(Number).filter((x) => !isNaN(x))
+            const nums = values.map(Number).filter(x => !isNaN(x))
             fillValue = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
         } else if (strategy == "median") {
-            const nums = values.map(Number).filter((x) => !isNaN(x)).sort((a, b) => a - b)
+            const nums = values.map(Number).filter(x => !isNaN(x)).sort((a, b) => a - b)
             fillValue = nums.length ? nums[Math.floor(nums.length / 2)] : null
         } else if (strategy == "mode") {
-            freq = {}
+            const freq = {}
             values.forEach((v) => { freq[v] = (freq[v] || 0) + 1 })
             const pairs = Object.entries(freq).sort((a, b) => b[1] - a[1])
             fillValue = pairs.length ? pairs[0][0] : null
@@ -164,7 +164,7 @@ class ClipOutliersIQR extends Transformation {
 
     apply(records) {
         const { column, k = 1.5, method = "clip", flag_column_name = "_outliers" } = this.params
-        const nums = records.map((r) => { const v = Number(r[column]); return isNaN(v) ? null : v }).filter((x) => x !== null)
+        const nums = records.map((r) => { const v = Number(r[column]); return isNaN(v) ? null : v }).filter(x => x !== null)
         if (nums.length < 5) return { records, evidence: { reason: "not_enough_numeric" } }
 
         nums.sort((a, b) => a - b)
@@ -200,7 +200,7 @@ class ClipOutliersIQR extends Transformation {
             const evidence = { method, lower, upper, flagged_count: changed }
             return { records: newRecords, evidence }
         } else if (method == "remove") {
-            const kept = records.filter((r) => {
+            const kept = records.filter(r => {
                 const v = Number(r[column])
                 return isNaN(v) ? true : (v >= lower && v <= upper)
             })
@@ -220,57 +220,137 @@ class ClipOutliersIQR extends Transformation {
  * MapCategorical: map values by explicit map or fuzzy via Fuse.js
  * params: { column, mapping: {old: new, ...} } OR { fuzzy: true, threshold: 0.85 }
  */
+// class MapCategorical extends Transformation {
+//     constructor(params = {}) {
+//         super("map_categorical", params, false)
+//     }
+
+//     apply(records) {
+//         const { column, mapping = null, fuzzy = false, threshold = 0.85 } = this.params
+//         const beforeSample = records.slice(0, 5).map((r) => r[column])
+//         const vals = [...new Set(records.map((r) => r[column]).filter(v => v !== null || v !== undefined))]
+
+//         let newRecords = records.map((r) => Object.assign({}, r))
+//         let changed = 0
+//         if (mapping && typeof mapping === "object") {
+//             newRecords = newRecords.map((v) => {
+//                 const copy = r
+//                 if (copy[column] in mapping) {
+//                     copy[column] = mapping[copy[column]]
+//                     changed++
+//                 }
+//                 return copy
+//             })
+//             return { records: newRecords, evidence: { mapping_sample: Object.entries(mapping).slice(0, 10), changed_count: changed } }
+//         } else if (fuzzy) {
+//             const Fuse = new fuse(vals, { includedScore: true, threshold: 1 })
+//             const clusters = []
+//             const used = new Set()
+//             for (let v of vals) {
+//                 if (used.has(v)) continue;
+//                 const matches = Fuse.search(v).filter(m => (1 - m.score) >= threshold).map((m) => m.item)
+//                 matches.forEach((m) => used.add(m))
+//                 if (matches.length > 1) clusters.push(matches)
+//             }
+
+//             const canonical = {}
+//             clusters.forEach((grp) => {
+//                 const canon = grp[0]
+//                 grp.forEach((v) => { canonical[v] = canon })
+//             })
+
+//             newRecords = newRecords.map((r) => {
+//                 if (r[column] in canonical) {
+//                     r[column] = canonical[r[column]]
+//                     changed++
+//                 }
+//                 return r
+//             })
+//             return { records: newRecords, evidence: { cluster: clusters.slice(0, 20), changed_count: changed } }
+//         }
+//         return { records: newRecords, evidence: { reason: "no_mapping" } };
+//     }
+// }
+
 class MapCategorical extends Transformation {
     constructor(params = {}) {
-        super("map_categorical", params, false)
+        super("map_categorical", params, false);
     }
 
     apply(records) {
-        const { column, mapping = null, fuzzy = false, threshold = 0.85 } = this.params
-        const beforeSample = records.slice(0, 5).map((r) => r[column])
-        const vals = [...new Set(records.map((r) => r[column]).filter((v) => v !== null || v !== undefined))]
+        const { column, fuzzy = false, threshold = 0.6, mapping = null } = this.params;
 
-        let newRecords = records.map((r) => Object.assign({}, r))
-        let changed = 0
-        if (mapping && mapping === 'object') {
-            newRecords = newRecords.map((v) => {
-                const copy = r
+        // Explicit mapping case
+        if (mapping && typeof mapping === "object") {
+            const newRecords = records.map(r => {
+                const copy = { ...r };
                 if (copy[column] in mapping) {
-                    copy[column] = mapping[copy[column]]
-                    changed++
+                    copy[column] = mapping[copy[column]];
                 }
-                return copy
-            })
-            return { records: newRecords, evidence: { mapping_sample: Object.entries(mapping).slice(0, 10), changed_count: changed } }
-        } else if (fuzzy) {
-            const Fuse = new fuse(vals, { includedScore: true, threshold: 1 })
-            const clusters = []
-            const used = new Set()
-            for (let v of vals) {
-                if (used.has(v)) continue;
-                const matches = Fuse.search(v).filter((m) => (1 - m.score) >= threshold).map((m) => m.item)
-                matches.forEach((m) => used.add(m))
-                if (matches.length > 1) clusters.push(matches)
-            }
-
-            const canonical = {}
-            clusters.forEach((grp) => {
-                const canon = grp[0]
-                grp.forEach((v) => { canonical[v] = canon })
-            })
-
-            newRecords = newRecords.map((r) => {
-                if (r[column] in canonical) {
-                    r[column] = canonical[r[column]]
-                    changed++
-                }
-                return r
-            })
-            return { records: newRecords, evidence: { cluster: clusters.slice(0, 20), changed_count: changed } }
+                return copy;
+            });
+            return {
+                records: newRecords,
+                evidence: { mapping }
+            };
         }
-        return { records: newRecords, evidence: { reason: "no_mapping" } };
+
+        // Normalize values for fuzzy match
+        const rawVals = [...new Set(records.map(r => r[column]))]
+            .filter(v => v !== null && v !== undefined);
+
+        const normalizedVals = rawVals.map(v =>
+            String(v).trim().toLowerCase().replace(/[^a-z0-9 ]/gi, "")
+        );
+
+        const fuseInstance = new fuse(
+            normalizedVals.map((v, i) => ({ key: rawVals[i], norm: v })), 
+            {
+                keys: ["norm"],
+                includeScore: true,
+                threshold: 1
+            }
+        );
+
+        const canonical = {};
+        const used = new Set();
+
+        for (let item of normalizedVals) {
+            if (used.has(item)) continue;
+
+            const matches = fuseInstance.search(item)
+                .filter(m => (1 - m.score) >= threshold)
+                .map(m => m.item);
+
+            matches.forEach(m => used.add(m.norm));
+
+            // canonical name = first seen raw value
+            const canon = matches[0].key;
+            for (let m of matches) {
+                canonical[m.key] = canon;
+            }
+        }
+
+        let changed = 0;
+        const newRecords = records.map(r => {
+            const copy = { ...r };
+            if (canonical[copy[column]]) {
+                copy[column] = canonical[copy[column]];
+                changed++;
+            }
+            return copy;
+        });
+
+        return {
+            records: newRecords,
+            evidence: {
+                canonical,
+                changed_count: changed
+            }
+        };
     }
 }
+
 
 /**
  * DeriveColumn: create a new column derived from existing row using a JS function
