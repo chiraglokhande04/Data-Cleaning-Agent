@@ -6,7 +6,6 @@ const cloudinary = require("cloudinary").v2;
 const { parse } = require("fast-csv");
 const DatasetMetadata = require("../models/DatasetMetadata.js");
 
-
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
@@ -27,7 +26,24 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   const columnStats = {};
   let rowCount = 0;
 
-  const stream = fs.createReadStream(filePath).pipe(parse({ headers: true }));
+  // ------------------------------
+  // FIX #1 → SANITIZE HEADERS
+  // ------------------------------
+  let headerIndex = 1;
+  const sanitizeHeader = (col) => {
+    const cleaned = (col || "").trim();
+
+    if (!cleaned) {
+      return `column_${headerIndex++}`; // auto rename empty header
+    }
+
+    return cleaned;
+  };
+  // ------------------------------
+
+  const stream = fs.createReadStream(filePath).pipe(parse({ headers: (headers) =>
+    headers.map(h => sanitizeHeader(h)) // FIX #2: sanitize headers BEFORE data event
+  }));
 
   return new Promise((resolve) => {
     stream
@@ -40,13 +56,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       .on("data", (row) => {
         rowCount++;
 
-        // --- Preview: first 5 rows only ---
         if (preview.length < 5) preview.push(row);
 
-        // --- Initialize per-column stats ---
         Object.keys(row).forEach((col) => {
-          if (!columnStats[col]) {
-            columnStats[col] = {
+          // FIX #3: ensure sanitized (paranoia check)
+          const cleanedCol = sanitizeHeader(col);
+
+          if (!columnStats[cleanedCol]) {
+            columnStats[cleanedCol] = {
               missing_count: 0,
               unique_set: new Set(),
               example_values: new Set(),
@@ -55,47 +72,47 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
           const val = row[col];
 
-          // Missing count
           if (val === "" || val === null || val === undefined) {
-            columnStats[col].missing_count++;
+            columnStats[cleanedCol].missing_count++;
           } else {
-            // Unique values
-            columnStats[col].unique_set.add(val);
+            columnStats[cleanedCol].unique_set.add(val);
 
-            // Example values
-            if (columnStats[col].example_values.size < 3)
-              columnStats[col].example_values.add(val);
+            if (columnStats[cleanedCol].example_values.size < 3) {
+              columnStats[cleanedCol].example_values.add(val);
+            }
           }
         });
       })
 
       .on("end", async () => {
-        // ---- Build schema metadata ----
+        // ------------------------------
+        // FIX #4: Ensure schema entries always contain a valid "name"
+        // ------------------------------
         const schema = {};
         for (const col of Object.keys(columnStats)) {
           schema[col] = {
-            name: col,
-            dtype: "string", // Can't infer types via stream unless you want extra logic
+            name: col, // FIXED: col is always non-empty due to sanitizeHeader
+            dtype: "string",
             missing_count: columnStats[col].missing_count,
             unique_count: columnStats[col].unique_set.size,
             example_values: [...columnStats[col].example_values],
           };
         }
+        // ------------------------------
 
-        // ---- Upload raw CSV file to Cloudinary ----
+        // ---- Upload CSV file to Cloudinary ----
         const uploadResult = await cloudinary.uploader.upload(filePath, {
           resource_type: "raw",
           folder: "data_cleaning_agent",
         });
 
-        // ---- Save in MongoDB ----
         const metadata = new DatasetMetadata({
           filename: req.file.originalname,
           cloudinary_url: uploadResult.secure_url,
           size: fs.statSync(filePath).size,
           row_count: rowCount,
           preview,
-          schema,
+          schema, // FIXED
           issues: [],
           transformations: [],
           provenance: [
@@ -108,7 +125,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
         await metadata.save();
 
-        // Cleanup
         fs.unlinkSync(filePath);
 
         res.json({
@@ -121,4 +137,4 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   });
 });
 
-module.exports = router
+module.exports = router;

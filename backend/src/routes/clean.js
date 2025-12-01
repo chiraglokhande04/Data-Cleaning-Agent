@@ -27,6 +27,23 @@ function isNumericColumn(df, col) {
     return df[col].values.every(v => v === null || v === undefined || v === "" || !isNaN(Number(v)));
 }
 
+function cleanMapKeys(map) {
+    if (!map) return {};
+
+    const clean = {};
+
+    // Mongoose Maps can be iterated with map.forEach
+    Object.keys(map).forEach((value, key) => {
+        if (!key || typeof key !== "string") return;
+        const trimmed = key.trim();
+        if (!trimmed) return; // drop empty keys
+
+        clean[trimmed] = value;
+    });
+
+    return clean;
+}
+
 
 // -----------------------------------------
 // POST /datasets/:id/clean?auto=true|false
@@ -58,6 +75,9 @@ router.post("/:id/clean", async (req, res) => {
         const cleaner = new Cleaner(df);
 
         console.log("ANALYSIS ISSUES:", analysis.issues);
+
+        console.log("RAW SCHEMA KEYS:", Object.keys(analysis.schema));
+
 
 
         const seq = [];
@@ -133,12 +153,15 @@ router.post("/:id/clean", async (req, res) => {
 
         // Step 6 - Save metadata
         dataset.cleaned_version_url = upload.secure_url;
-        dataset.issues = analysis.issues.map(issue => ({
-            column: issue.column,
-            issue_type: issue.issue_type,
-            description: issue.description ?? `Auto-detected issue: ${issue.issue_type}`,
-            severity: issue.severity ?? "medium"
-        }));
+        dataset.issues = analysis.issues
+            .filter(issue => issue.column && issue.column.trim().length > 0) // FIX #1
+            .map(issue => ({
+                column: issue.column.trim(),
+                issue_type: issue.issue_type,
+                description: issue.description ?? `Auto-detected issue: ${issue.issue_type}`,
+                severity: issue.severity ?? "medium"
+            }));
+
 
         dataset.transformations = cleaner.transformations.map(t => ({
             name: t.name ?? t.transformationName ?? "unknown",
@@ -152,35 +175,41 @@ router.post("/:id/clean", async (req, res) => {
             timestamp: new Date(),
             details: p.details ?? p
         }));
+        console.log("prov", dataset.provenance)
         dataset.preview = dataset.preview ?? [];
 
 
 
-        const schemaKeys = Object.keys(analysis.schema);
-
-        // HARD FILTER (removes "" | null | undefined | spaces | weird keys)
-        const validKeys = schemaKeys.filter(k => typeof k === "string" && k.trim().length > 0);
-
-        // LOG TO CONFIRM
-        console.log("RAW_SCHEMA_KEYS:", schemaKeys);
-        console.log("VALID_SCHEMA_KEYS:", validKeys);
-
+        // --- Build finalSchema ---
         const finalSchema = {};
+        const rawKeys = analysis && analysis.schema ? Object.keys(analysis.schema) : [];
 
-        for (const col of validKeys) {
-            const info = analysis.schema[col];
+        for (const col of rawKeys) {
+            if (!col || typeof col !== "string") continue;
+            const trimmed = col.trim();
+            if (!trimmed) continue;
 
-            finalSchema[col] = {
-                name: col,
+            const info = analysis.schema[col] || {};
+            finalSchema[trimmed] = {
+                name: trimmed,
                 dtype: info.inferred_type || info.pandas_dtypes || "string",
                 missing_count: info.missing_count ?? 0,
                 unique_count: info.nunique ?? null,
                 example_values: info.example ?? []
             };
         }
+        console.log("FINAL SCHEMA RAW:", finalSchema);
+
+        const sanitizedNewSchema = cleanMapKeys(finalSchema);
+
+        // Replace with sanitized new schema
+        dataset.schema = sanitizedNewSchema;
 
 
-        dataset.schema = finalSchema;
+        // Confirm assignment (log right before save)
+        console.log("DATASET.SCHEMA KEYS AT SAVE:", Object.keys(dataset.schema || {}));
+
+
 
 
 
