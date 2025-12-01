@@ -14,7 +14,8 @@ const {
     CoerceDatetime,
     FillMissing,
     ClipOutliersIQR,
-    MapCategorical
+    MapCategorical,
+    DropEmpty
 } = require("../agents/Cleaner/transformations.js");
 
 const DatasetMetadata = require("../models/DatasetMetadata.js");
@@ -23,6 +24,8 @@ const DatasetMetadata = require("../models/DatasetMetadata.js");
 
 const router = express.Router();
 
+
+// Helper Functions 
 function isNumericColumn(df, col) {
     return df[col].values.every(v => v === null || v === undefined || v === "" || !isNaN(Number(v)));
 }
@@ -127,6 +130,28 @@ router.post("/:id/clean", async (req, res) => {
                     });
                     break;
 
+                case "empty_column":
+                    seq.push({
+                        transformation: new DropEmpty({ target: "column" }),
+                        options: { autoClean: auto, userId: "system" }
+                    });
+                    break;
+
+                case "mostly_empty_column":
+                    seq.push({
+                        transformation: new DropEmpty({ target: "column", threshold: 0.95 }),
+                        options: { autoClean: auto, userId: "system" }
+                    });
+                    break;
+
+                case "empty_row":
+                    seq.push({
+                        transformation: new DropEmpty({ target: "row" }),
+                        options: { autoClean: auto, userId: "system" }
+                    });
+                    break;
+
+
                 default:
                     break;
             }
@@ -205,14 +230,8 @@ router.post("/:id/clean", async (req, res) => {
         // Replace with sanitized new schema
         dataset.schema = sanitizedNewSchema;
 
-
         // Confirm assignment (log right before save)
         console.log("DATASET.SCHEMA KEYS AT SAVE:", Object.keys(dataset.schema || {}));
-
-
-
-
-
 
         await dataset.save();
 

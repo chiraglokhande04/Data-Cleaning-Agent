@@ -3,7 +3,7 @@ const Fuse = require("fuse.js");
 const { v4: uuidv4 } = require("uuid");
 
 const CONFIG = {
-  col_missing_threshold: 0.2,
+  col_missing_threshold: 0.95,
   row_missing_threshold: 0.5,
   pk_uniqueness_threshold: 0.98,
   numeric_parse_fraction: 0.9,
@@ -99,44 +99,109 @@ class Analyzer {
   }
 
   // 2) Missing values (column + row)
-  detectMissing() {
-    const colThresh = CONFIG.col_missing_threshold;
-    const rowThresh = CONFIG.row_missing_threshold;
+detectMissing() {
+  const colThresh = CONFIG.col_missing_threshold; // now 0.95
+  const rowThresh = CONFIG.row_missing_threshold;
 
-    const isMissing = (v) =>
-      v === null || v === undefined || String(v).trim() === "" || (typeof v === "number" && Number.isNaN(v)) || (typeof v === "string" && ["na", "n/a", "-", "null"].includes(String(v).trim().toLowerCase()));
+  const isMissing = (v) =>
+    v === null ||
+    v === undefined ||
+    String(v).trim() === "" ||
+    (typeof v === "number" && Number.isNaN(v)) ||
+    (typeof v === "string" && ["na", "n/a", "-", "null"].includes(String(v).trim().toLowerCase()));
 
-    // column level
-    for (const col of this.df.columns) {
-      const s = this._seriesValues(this.df[col]);
-      let missingCount = 0;
-      const missingRowIdx = [];
+  // ----------------------------
+  // COLUMN-LEVEL MISSING
+  // ----------------------------
+  for (const col of this.df.columns) {
+    const s = this._seriesValues(this.df[col]);
+    let missingCount = 0;
+    const missingRowIdx = [];
 
-      for (let i = 0; i < s.length; i++) {
-        if (isMissing(s[i])) {
-          missingCount++;
-          if (missingRowIdx.length < 5) missingRowIdx.push(i);
-        }
-      }
-
-      const missingPct = s.length === 0 ? 0 : missingCount / s.length;
-      if (missingPct >= colThresh) {
-        this.issues.push(issue("column", col, missingRowIdx, "missing_values", missingPct > 0.5 ? "high" : "medium", missingPct, { missingPct }, "impute_or_drop"));
+    for (let i = 0; i < s.length; i++) {
+      if (isMissing(s[i])) {
+        missingCount++;
+        if (missingRowIdx.length < 5) missingRowIdx.push(i);
       }
     }
 
-    // row level
-    const nRows = this.df.shape[0];
-    for (let i = 0; i < nRows; i++) {
-      const rowValues = this.df.values && Array.isArray(this.df.values) ? this.df.values[i] : null;
-      if (!rowValues) continue;
-      const missingCells = rowValues.filter(isMissing).length;
-      const missingFraction = missingCells / rowValues.length;
-      if (missingFraction >= rowThresh) {
-        this.issues.push(issue("row", null, [i], "row_sparsity", "high", missingFraction, { missingFraction }, "drop_or_review"));
-      }
+    const missingPct = s.length === 0 ? 1 : missingCount / s.length;
+
+    // 1) Fully empty (100%)
+    if (missingPct === 1) {
+      this.issues.push(issue(
+        "column",
+        col,
+        missingRowIdx,
+        "empty_column",
+        "high",
+        1.0,
+        { missingPct },
+        "drop_column"
+      ));
+      continue;
+    }
+
+    // 2) Mostly empty (95%+)
+    if (missingPct >= colThresh) {
+      this.issues.push(issue(
+        "column",
+        col,
+        missingRowIdx,
+        "mostly_empty_column",
+        missingPct > 0.98 ? "high" : "medium",
+        missingPct,
+        { missingPct },
+        "drop_column"
+      ));
+      continue;
+    }
+
+    // 3) Regular missing → fill  
+    if (missingPct > 0) {
+      this.issues.push(issue(
+        "column",
+        col,
+        missingRowIdx,
+        "missing_values",
+        missingPct > 0.3 ? "medium" : "low",
+        missingPct,
+        { missingPct },
+        "impute"
+      ));
     }
   }
+
+  // ----------------------------
+  // ROW-LEVEL MISSING
+  // ----------------------------
+  const nRows = this.df.shape[0];
+
+  for (let i = 0; i < nRows; i++) {
+    const rowValues = (this.df.values && Array.isArray(this.df.values))
+      ? this.df.values[i]
+      : null;
+
+    if (!rowValues) continue;
+
+    const missingCells = rowValues.filter(isMissing).length;
+    const missingFraction = missingCells / rowValues.length;
+
+    if (missingFraction >= rowThresh) {
+      this.issues.push(issue(
+        "row",
+        null,
+        [i],
+        "row_sparsity",
+        "high",
+        missingFraction,
+        { missingFraction },
+        "drop_row"
+      ));
+    }
+  }
+}
+
 
   // 3) duplicates & PK candidates
   detectDuplicatesAndPK() {
@@ -263,6 +328,61 @@ class Analyzer {
     }
   }
 
+  detectEmptyColumns() {
+  for (const col of this.df.columns) {
+    const values = this._seriesValues(this.df[col]);
+
+    const isEmpty = values.every(v =>
+      v === null ||
+      v === undefined ||
+      String(v).trim() === "" ||
+      (typeof v === "number" && Number.isNaN(v))
+    );
+
+    if (isEmpty) {
+      this.issues.push(issue(
+        "column",
+        col,
+        [],
+        "empty_column",
+        "high",
+        1.0,
+        { reason: "all_values_empty" },
+        "drop_column"
+      ));
+    }
+  }
+}
+
+detectEmptyRows() {
+  const nRows = this.df.shape[0];
+
+  for (let i = 0; i < nRows; i++) {
+    const row = this.df.values[i];
+
+    const isEmpty = row.every(v =>
+      v === null ||
+      v === undefined ||
+      String(v).trim() === "" ||
+      (typeof v === "number" && Number.isNaN(v))
+    );
+
+    if (isEmpty) {
+      this.issues.push(issue(
+        "row",
+        null,
+        [i],
+        "empty_row",
+        "high",
+        1.0,
+        { reason: "row_fully_empty" },
+        "drop_row"
+      ));
+    }
+  }
+}
+
+
   // Run all
   runAll() {
     const schema = this.inferSchema();
@@ -272,6 +392,8 @@ class Analyzer {
     this.detectDateParsing();
     this.detectCategoricalInconsistency();
     this.detectSuspiciousText();
+    this.detectEmptyColumns();
+    this.detectEmptyRows();
 
     return { schema, issues: this.issues };
   }

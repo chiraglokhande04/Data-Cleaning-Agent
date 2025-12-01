@@ -220,58 +220,6 @@ class ClipOutliersIQR extends Transformation {
  * MapCategorical: map values by explicit map or fuzzy via Fuse.js
  * params: { column, mapping: {old: new, ...} } OR { fuzzy: true, threshold: 0.85 }
  */
-// class MapCategorical extends Transformation {
-//     constructor(params = {}) {
-//         super("map_categorical", params, false)
-//     }
-
-//     apply(records) {
-//         const { column, mapping = null, fuzzy = false, threshold = 0.85 } = this.params
-//         const beforeSample = records.slice(0, 5).map((r) => r[column])
-//         const vals = [...new Set(records.map((r) => r[column]).filter(v => v !== null || v !== undefined))]
-
-//         let newRecords = records.map((r) => Object.assign({}, r))
-//         let changed = 0
-//         if (mapping && typeof mapping === "object") {
-//             newRecords = newRecords.map((v) => {
-//                 const copy = r
-//                 if (copy[column] in mapping) {
-//                     copy[column] = mapping[copy[column]]
-//                     changed++
-//                 }
-//                 return copy
-//             })
-//             return { records: newRecords, evidence: { mapping_sample: Object.entries(mapping).slice(0, 10), changed_count: changed } }
-//         } else if (fuzzy) {
-//             const Fuse = new fuse(vals, { includedScore: true, threshold: 1 })
-//             const clusters = []
-//             const used = new Set()
-//             for (let v of vals) {
-//                 if (used.has(v)) continue;
-//                 const matches = Fuse.search(v).filter(m => (1 - m.score) >= threshold).map((m) => m.item)
-//                 matches.forEach((m) => used.add(m))
-//                 if (matches.length > 1) clusters.push(matches)
-//             }
-
-//             const canonical = {}
-//             clusters.forEach((grp) => {
-//                 const canon = grp[0]
-//                 grp.forEach((v) => { canonical[v] = canon })
-//             })
-
-//             newRecords = newRecords.map((r) => {
-//                 if (r[column] in canonical) {
-//                     r[column] = canonical[r[column]]
-//                     changed++
-//                 }
-//                 return r
-//             })
-//             return { records: newRecords, evidence: { cluster: clusters.slice(0, 20), changed_count: changed } }
-//         }
-//         return { records: newRecords, evidence: { reason: "no_mapping" } };
-//     }
-// }
-
 class MapCategorical extends Transformation {
     constructor(params = {}) {
         super("map_categorical", params, false);
@@ -381,6 +329,95 @@ class DeriveColumn extends Transformation {
 }
 
 
+class DropEmpty extends Transformation {
+    constructor(params = {}) {
+        // params: { target: "row" | "column", threshold: 1.0 }
+        // threshold default = 1.0 (drop only fully empty)
+        super("drop_empty", params, true);
+    }
+
+    apply(records) {
+        const { target = "column", threshold = 1.0 } = this.params;
+
+        if (!records || records.length === 0) {
+            return { records, evidence: { reason: "empty_dataset" } };
+        }
+
+        const columns = Object.keys(records[0]);
+
+        const isEmpty = (v) =>
+            v === null ||
+            v === undefined ||
+            v === "" ||
+            (typeof v === "number" && isNaN(v));
+
+        // --------------------------------------------------------------------
+        // DROP EMPTY / MOSTLY EMPTY COLUMNS
+        // --------------------------------------------------------------------
+        if (target === "column") {
+            const colsToDrop = [];
+
+            for (let col of columns) {
+                let missingCount = 0;
+                let total = records.length;
+
+                for (const row of records) {
+                    if (isEmpty(row[col])) missingCount++;
+                }
+
+                const missingPct = total === 0 ? 1 : missingCount / total;
+
+                if (missingPct >= threshold) {
+                    colsToDrop.push(col);
+                }
+            }
+
+            const newRecords = records.map((r) => {
+                const copy = { ...r };
+                colsToDrop.forEach((c) => delete copy[c]);
+                return copy;
+            });
+
+            return {
+                records: newRecords,
+                evidence: {
+                    dropped_columns: colsToDrop,
+                    dropped_count: colsToDrop.length,
+                    threshold,
+                },
+            };
+        }
+
+        // --------------------------------------------------------------------
+        // DROP EMPTY ROWS (only fully empty makes sense)
+        // --------------------------------------------------------------------
+        if (target === "row") {
+            const newRecords = records.filter((r) => {
+                const values = Object.values(r);
+                // threshold logic for rows is usually pointless — keep simple
+                return !(values.filter(v => isEmpty(v)).length / values.length >= threshold);
+            });
+
+            const removed = records.length - newRecords.length;
+
+            return {
+                records: newRecords,
+                evidence: {
+                    removed_rows: removed,
+                    threshold,
+                },
+            };
+        }
+
+        return {
+            records,
+            evidence: { reason: "invalid_target" },
+        };
+    }
+}
+
+
+
 
 module.exports = {
     Transformation,
@@ -390,4 +427,5 @@ module.exports = {
     ClipOutliersIQR,
     MapCategorical,
     DeriveColumn,
+    DropEmpty
 };
