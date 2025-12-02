@@ -241,6 +241,7 @@ router.post("/:id/clean", async (req, res) => {
 
         res.json({
             message: "Dataset cleaned successfully",
+            dataset:dataset,
             cleaned_url: upload.secure_url,
             provenance: cleaner.provenance
         });
