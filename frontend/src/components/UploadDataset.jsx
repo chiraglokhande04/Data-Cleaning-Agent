@@ -182,7 +182,7 @@ export default function UploadDataset({ onUploaded }) {
                 </div>
               ) : (
                 <div className="flex items-center gap-4">
-                  <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <div className="shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                     <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -201,7 +201,7 @@ export default function UploadDataset({ onUploaded }) {
                       e.stopPropagation();
                       setFile(null);
                     }}
-                    className="flex-shrink-0 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="shrink-0 p-2 hover:bg-gray-100 rounded-lg transition-colors"
                     type="button"
                   >
                     <svg className="w-5 h-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
