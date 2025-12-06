@@ -11,15 +11,21 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@pinecone-database/pinecone": "^6.1.3",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "danfojs-node": "^1.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "fast-csv": "^5.0.5",
     "fs": "^0.0.1-security",
+    "fs-extra": "^11.3.2",
     "fuse.js": "^7.1.0",
+    "markdown-it": "^14.1.0",
     "mongoose": "^9.0.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "openai": "^6.10.0",
+    "puppeteer": "^24.32.0"
   }
 }
