@@ -4,6 +4,9 @@ const fetch = require("node-fetch");
 const dfd = require("danfojs-node");
 const cloudinary = require("cloudinary").v2;
 const path = require("path");
+// Reporter Agent
+const runReport = require("../agents/Reporter/runReport.js"); 
+
 
 // Import Analyzer + Cleaner
 const { Analyzer } = require("../agents/Analyzer/Analyzer.js");
@@ -235,16 +238,35 @@ router.post("/:id/clean", async (req, res) => {
 
         await dataset.save();
 
-        // Cleanup
+        console.log("Generating Report…");
+
+        // ---- STEP 1: RUN REPORTER AGENT ----
+        const { mdPath, pdfPath } = await runReport(dataset._id);
+
+        // ---- STEP 2: Upload PDF report to Cloudinary ----
+        const reportUpload = await cloudinary.uploader.upload(pdfPath, {
+            resource_type: "raw",
+            folder: "data_cleaning_agent/reports"
+        });
+
+        // ---- STEP 3: Save cleaned_report_url in DB ----
+        dataset.cleaned_report_url = reportUpload.secure_url;
+        await dataset.save();
+
+        // ---- STEP 4: Cleanup temp files ----
         fs.unlinkSync(tmpPath);
         fs.unlinkSync(cleanedPath);
+        fs.unlinkSync(pdfPath);   // remove local pdf
 
+        // ---- STEP 5: Return response ----
         res.json({
-            message: "Dataset cleaned successfully",
-            dataset:dataset,
+            message: "Dataset cleaned + analyzed + reported",
             cleaned_url: upload.secure_url,
+            report_url: reportUpload.secure_url,
+            dataset,
             provenance: cleaner.provenance
         });
+
 
     } catch (err) {
         console.error(err);

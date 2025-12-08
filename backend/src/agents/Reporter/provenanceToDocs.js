@@ -1,45 +1,52 @@
-const crypto = require("crypto")
+const crypto = require("crypto");
 
-export function sanitizeProvenance(prov) {
-    const p = JSON.parse(JSON.strigify(prov))
+function sanitizeProvenance(prov) {
+    const p = JSON.parse(JSON.stringify(prov));
 
-    // provenance may contains someone's private info (e.g. email,mobile). so it replace that info with [Redacted] so it safe to feed it to ai agent (to prevent privacy breaches)
     const redact = (v) =>
         typeof v === "string" &&
-            (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(v) ||
-                /\b\d{10,}\b/.test(v))
+        (
+            /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(v) ||
+            /\b\d{10,}\b/.test(v)
+        )
             ? "[REDACTED]"
             : v;
 
     function walk(obj) {
-        if (!obj && typeof obj != "object") return obj;
+        if (!obj || typeof obj !== "object") return obj;
 
         for (const k of Object.keys(obj)) {
-            if (typeof k === 'string') obj[k] = redact(obj[k])
-            else if (typeof k === "object") obj[k] = walk(obj[k])
+            const val = obj[k];
+            if (typeof val === "object") obj[k] = walk(val);
+            else obj[k] = redact(val);
         }
+
+        return obj;
     }
-    walk(p)
-    return p
+
+    return walk(p);
 }
 
-export function provenanceToDoc(provEvent, datasetMeta = {}) {
-    const p = sanitizeProvenance(provEvent)
+module.exports.sanitizeProvenance = sanitizeProvenance;
 
-    const transform = p.transform || {}
-    const tname = transform.name || "Unknown Transformation"
-    const tparams = transform.params || {}
+
+
+module.exports.provenanceToDoc = function provenanceToDoc(provEvent, datasetMeta = {}) {
+
+    const p = sanitizeProvenance(provEvent);
+
+    const transform = p.transform || {};
+    const tname = transform.name || "Unknown Transformation";
+    const tparams = transform.params || {};
 
     const evidenceSample =
-        (p.evidence && (p.evidence.before_sample || p.evidence.sample_before)) ||
+        (p.evidence && (p.evidence.before_records || p.evidence.sample_before)) ||
         p.before_sample ||
         [];
 
-
     const sampleText = JSON.stringify(evidenceSample).slice(0, 800);
 
-
-    // code snippet suggestions 
+  // code snippet suggestions 
     let code_snippet = "";
     switch (tname) {
 
@@ -126,29 +133,27 @@ export function provenanceToDoc(provEvent, datasetMeta = {}) {
     }
 
 
-  const text = [
-    `Action: ${tname}`,
-    `Why: ${p.reason || "heuristic / configured threshold"}`,
-    `Params: ${tparams}`,
-    `Evidence sample: ${sampleText}`,
-    `Changed count: ${p.evidence?.changed_count ?? p.evidence?.dropped_count  ?? "n/a"}`,
-  ].join("\n\n");
+    const text = [
+        `Action: ${tname}`,
+        `Why: ${p.reason || "heuristic / configured threshold"}`,
+        `Params: ${JSON.stringify(tparams)}`,
+        `Evidence sample: ${sampleText}`,
+        `Changed count: ${p.evidence?.changed_count ?? p.evidence?.dropped_count ?? "n/a"}`,
+    ].join("\n\n");
 
-  const id = p.id || crypto.createHash("sha256").update(JSON.stringify(p)).digest("hex");
+    const id = p.id || crypto.createHash("sha256").update(JSON.stringify(p)).digest("hex");
 
-  return {
-    id,
-    title: `${tname} on ${transform.params?.column ?? "dataset"}`,
-    text: `${text}\n\nCode:\n${code_snippet}`,
-    code_snippet,
-    metadata: {
-      dataset_id: datasetMeta._id ?? datasetMeta.id ?? "unknown",
-      timestamp: p.timestamp || new Date().toISOString(),
-      transform: tname,
-      params: transform.params || {},
-      confidence: p.evidence?.confidence ?? 0.75,
-    },
-  };
-}
-
-
+    return {
+        id,
+        title: `${tname} on ${transform.params?.column ?? "dataset"}`,
+        text: `${text}\n\nCode:\n${code_snippet}`,
+        code_snippet,
+        metadata: {
+            dataset_id: datasetMeta._id ?? datasetMeta.id ?? "unknown",
+            timestamp: p.timestamp || new Date().toISOString(),
+            transform: tname,
+            params: JSON.stringify(tparams), 
+            confidence: p.evidence?.confidence ?? 0.75,
+        },
+    };
+};

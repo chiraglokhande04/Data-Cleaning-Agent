@@ -11,6 +11,7 @@ export default function CleanActions({ dataset }) {
   const [showPreview, setShowPreview] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
   const [cleanedIssues, setCleanedIssues] = useState([]);
+  const [reportUrl, setReportUrl] = useState("");
 
 
   const runCleaning = async () => {
@@ -43,6 +44,7 @@ export default function CleanActions({ dataset }) {
       await new Promise(resolve => setTimeout(resolve, 800));
 
       setCleanedUrl(data.cleaned_url);
+      setReportUrl(data.report_url);
       setIsCompleted(true);
       setCleaningStage("");
     } catch (err) {
@@ -61,7 +63,9 @@ export default function CleanActions({ dataset }) {
 
   const generateReport = () => {
     alert("Generating comprehensive cleaning report...");
-    // Implement report generation
+    if (reportUrl) {
+      window.open(reportUrl, "_blank");
+    }
   };
 
   if (!dataset) return null;
