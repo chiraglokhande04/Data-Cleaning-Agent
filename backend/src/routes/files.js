@@ -103,7 +103,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         // ---- Upload CSV file to Cloudinary ----
         const uploadResult = await cloudinary.uploader.upload(filePath, {
           resource_type: "raw",
-          folder: "data_cleaning_agent",
+          folder: "data_cleaning_agent/datasets",
         });
 
         const metadata = new DatasetMetadata({

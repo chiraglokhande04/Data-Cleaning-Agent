@@ -175,7 +175,7 @@ router.post("/:id/clean", async (req, res) => {
         // Upload cleaned file
         const upload = await cloudinary.uploader.upload(cleanedPath, {
             resource_type: "raw",
-            folder: "data_cleaning_agent/cleaned"
+            folder: "data_cleaning_agent/cleaned_csv"
         });
 
 

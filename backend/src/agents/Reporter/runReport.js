@@ -19,13 +19,15 @@ async function main(datasetId) {
   if (!dataset) throw new Error("Dataset not found");
 
   const provenanceList = Array.isArray(dataset.provenance)
-  ? dataset.provenance.map(item => item.details).filter(Boolean)
-  : [];
+    ? dataset.provenance.map(item => item.details).filter(Boolean)
+    : [];
+
+  console.log("povenanceList.length............:", provenanceList);
 
   // Convert provenance events to small docs
   const docs = provenanceList
-  .map(evt => provenanceToDoc(evt, dataset))
-  .filter(Boolean);
+    .map(evt => provenanceToDoc(evt, dataset))
+    .filter(Boolean);
 
   console.log('docs............', docs)
 
@@ -47,12 +49,12 @@ async function main(datasetId) {
   }));
 
   // Call LLM to generate Markdown
-  const markdown = await generateReport({
-    datasetMeta: dataset,
-    provenanceJson: JSON.stringify(provenanceList, null, 2),
-    retrievedDocs: retrievedForPrompt,
-    rowCount: dataset.row_count,
-  });
+  const markdown = await generateReport(
+    dataset,
+    JSON.stringify(provenanceList, null, 2),
+    retrievedForPrompt,
+    dataset.row_count
+  );
 
   const outDir = path.join(process.cwd(), "reports");
   await fs.ensureDir(outDir);
@@ -66,11 +68,11 @@ async function main(datasetId) {
   console.log("Report generated:", { mdPath, pdfPath });
 
   // Disconnect ONLY if this script was run as stand-alone CLI
-if (process.env.IS_CLI === "true") {
-  await mongoose.disconnect();
-}
+  if (process.env.IS_CLI === "true") {
+    await mongoose.disconnect();
+  }
 
-return { mdPath, pdfPath };
+  return { mdPath, pdfPath };
 
 }
 
