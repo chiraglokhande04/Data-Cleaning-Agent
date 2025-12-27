@@ -13,12 +13,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors({
   origin: [
-  "http://localhost:5173",
-  "https://data-cleaning-agent.vercel.app"
-],
+    "http://localhost:5173",
+    "https://data-cleaning-agent.vercel.app"
+  ],
   methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
